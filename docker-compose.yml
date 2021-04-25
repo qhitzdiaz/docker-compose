@@ -1,0 +1,71 @@
+version: '3.7'
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - '3306'
+    environment:
+      - MYSQL_DATABASE=wordpress
+    volumes: 
+      - dbdata:/var/lib/mysql
+    command: '--default-authentication-plugin=mysql_native_password'
+    cap_add:
+      - SYS_NICE
+    networks:
+      - app-network
+  wordpress:
+    depends_on: 
+      - mysql
+    image: wordpress:fpm-alpine
+    container_name: wordpress
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - WORDPRESS_DB_HOST=mysql:3306
+      - WORDPRESS_DB_USER=$MYSQL_USER
+      - WORDPRESS_DB_PASSWORD=$MYSQL_PASSWORD
+      - WORDPRESS_DB_NAME=wordpress
+    volumes:
+      - ./wp-app:/var/www/html # Full wordpress project
+      - ./plugin-name/trunk/:/var/www/html/wp-content/plugins/plugin-name # Plugin development
+      - ./theme-name/trunk/:/var/www/html/wp-content/themes/theme-name # Theme development
+    networks:
+      - app-network
+  nginx:
+    depends_on:
+      - wordpress
+    image: nginx:stable-alpine
+    container_name: nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./wp-app:/var/www/html
+      - ~/web/conf:/etc/nginx/conf.d
+      - ./data/certbot/www:/var/www/certbot
+      - certbot-etc:/etc/letsencrypt
+    networks:
+      - app-network
+  certbot:
+    depends_on:
+      - nginx
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - ./wp-app:/var/www/html
+      - ./data/certbot/www:/var/www/certbot
+    command: certonly --dry-run --webroot --webroot-path=/var/www/html --email info@[tl.d] --agree-tos --no-eff-email --force-renewal -d [tl.d] -d www.[tl.d] -d [tl.d]
+        #command: certonly --webroot --webroot-path=/var/www/html --email info@[tl.d] --agree-tos --no-eff-email --force-renewal -d [tl.d] -d www.[tl.d] -d [tl.d]
+volumes:
+  certbot-etc:
+  wordpress:
+  dbdata:
+networks:
+  app-network:
+    driver: bridge  
+
